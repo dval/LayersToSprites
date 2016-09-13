@@ -12,7 +12,7 @@
 #target photoshop
 
 //Only run if a file is open
-if (app.documents.length > 0 && app.activeDocument.path != null) {
+if ( app.documents.length > 0 && app.activeDocument.name.substr(0,8) != 'Untitled' ) {
     
     // get active document
 	var currentDoc = {};
@@ -64,102 +64,102 @@ if (app.documents.length > 0 && app.activeDocument.path != null) {
 	dlg.warning = dlg.add('statictext', [21,490,410,530], "Warning: Existing files will be replaced without prompting!", {multiline: true});
 	dlg.center();
     
+    // final check before we run script
     var submitJob = dlg.show ();
     
-    // Handle OK button
+    // Handle any 'is OK to .show() dialog?' issues 
     if (submitJob == true && dlg.layerRange.layersList.selection.length > 0) {
-        
+
         // get the number instead of the name;	
-		var theLayerSelection = new Array;
-		var theColl = dlg.layerRange.layersList.items;
-		for (var p = 0; p < dlg.layerRange.layersList.items.length; p++) {
-			if (dlg.layerRange.layersList.items[p].selected == true) {
-				theLayerSelection = theLayerSelection.concat(p);
+        var theLayerSelection = new Array;
+        var theColl = dlg.layerRange.layersList.items;
+        for (var p = 0; p < dlg.layerRange.layersList.items.length; p++) {
+            if (dlg.layerRange.layersList.items[p].selected == true) {
+                theLayerSelection = theLayerSelection.concat(p);
             }
         };
 
         // collect the rest of the variables,
-		var theSuffix = dlg.suffix.suffixText.text;
-		var theNumber = Number (dlg.number.startNumber.text) - 1;
-		var theLayerNameAdd = dlg.layerName.doAddName.value;
-		var theDestination = dlg.target.targetField.text;
-		var theNumbering = dlg.number.addNumber.value;
-        
+        var thePrefix = dlg.prefix.prefixText.text;
+        //var theNumber = Number (dlg.number.startNumber.text) - 1;
+        //var theLayerNameAdd = dlg.layerName.doAddName.value;
+        var theDestination = dlg.target.targetField.text;
+        //var theNumbering = dlg.number.addNumber.value;
+
         // pdf options	
-		pdfOpts = new PDFSaveOptions() ;
-		pdfOpts.embedColorProfile = true;
-		pdfOpts.PDFCompatibility =  PDFCompatibility.PDF13;
-		pdfOpts.downSample =  PDFResample.NONE;
-		pdfOpts.vectorData = true;
-		pdfOpts.alphaChannels = false;
-		pdfOpts.byteOrder = ByteOrder.MACOS; 
-		pdfOpts.layers = false ;
+        pdfOpts = new PDFSaveOptions() ;
+        pdfOpts.embedColorProfile = true;
+        pdfOpts.PDFCompatibility =  PDFCompatibility.PDF13;
+        pdfOpts.downSample =  PDFResample.NONE;
+        pdfOpts.vectorData = true;
+        pdfOpts.alphaChannels = false;
+        pdfOpts.byteOrder = ByteOrder.MACOS; 
+        pdfOpts.layers = false ;
         pdfOpts.preserveEditing = false ;
-		pdfOpts.convertToEightBit = true;
-		pdfOpts.annotations = false;
-		pdfOpts.colorConversion = false;
-		pdfOpts.embedFonts = true;
-		pdfOpts.embedThumbnail = true;
-		pdfOpts.transparency = false;
-		pdfOpts.encoding = PDFEncoding.PDFZIP ;	
-		var theVisibilities = new Array;
-        
+        pdfOpts.convertToEightBit = true;
+        pdfOpts.annotations = false;
+        pdfOpts.colorConversion = false;
+        pdfOpts.embedFonts = true;
+        pdfOpts.embedThumbnail = true;
+        pdfOpts.transparency = false;
+        pdfOpts.encoding = PDFEncoding.PDFZIP ;	
+        var theVisibilities = new Array;
+
         var jpgopts = new JPEGSaveOptions();
         jpgopts.byteOrder = ByteOrder.MACOS;
         jpgopts.embedColorProfile = true;
         jpgopts.formatOptions = FormatOptions.STANDARDBASELINE;
         jpgopts.matte = MatteType.NONE;
         jpgopts.quality = 10;
-// create the pdf-name;
-		if (theSuffix.length > 0) {
-			var aSuffix = "_" + theSuffix
-			}
-		else {
-			var aSuffix = ""
-			};
-// create a flattened copy;
-		var theCopy = myDocument.duplicate("thecopy", true);
-// do the operation;
-		for (var m = theLayerSelection.length - 1; m >0; m--) {
-			app.activeDocument = myDocument;
-			var theLayer = theLayerSets[theLayerSelection[m]];
-			if (theNumbering == true) {
-				theNumber = bufferNumberWithZeros((Number (theNumber) + 1), 2);
-				theNumberString =  "_" + theNumber
-				};
-			else {
-				theNumberString = ""
-				};
-// get the layername for the pdf-name;
-			if (theLayerNameAdd == true) {
-				var aLayerName = "_" + theLayer.name.replace("/", "_")
-				}
-			else {
-				var aLayerName = ""
-				}			
-// transfer layerset over to the copy;
-			theLayer.duplicate (theCopy, ElementPlacement.PLACEATBEGINNING);
-			app.activeDocument = theCopy;
-// hide the llast added layer;
-			theCopy.layers[1].visible = false;
-			//theCopy.saveAs((new File(theDestination+"/"+myDocName+aSuffix+aLayerName+theNumberString+".pdf")),pdfOpts,true)
-			theCopy.saveAs((new File(theDestination+"/"+myDocName+aSuffix+aLayerName+theNumberString+".jpg")),jpgopts,true)
-			};
-		theCopy.close(SaveOptions.DONOTSAVECHANGES);
-		}
-	};
-    else {
+        
+        // create the pdf-name;
+        var fileNamePrefix = "";
+        if (thePrefix.length > 0) {
+            fileNamePrefix = thePrefix+"_";
+        }
+    
+        // create a flattened copy;
+        var theCopy = myDocument.duplicate("thecopy", true);
+        
+        // do the operation;
+        for (var m = theLayerSelection.length - 1; m >0; m--) {
+            
+            //app.activeDocument = myDocument;
+            
+            var theLayer = theLayerSets[theLayerSelection[m]];
+            var aLayerName = "_" + theLayer.name.replace("/", "_")
+            			
+            // transfer layerset over to the copy;
+            theLayer.duplicate (theCopy, ElementPlacement.PLACEATBEGINNING);
+            app.activeDocument = theCopy;
+            // hide the llast added layer;
+            theCopy.layers[1].visible = false;
+            //theCopy.saveAs((new File(theDestination+"/"+myDocName+aSuffix+aLayerName+theNumberString+".pdf")),pdfOpts,true)
+            theCopy.saveAs((new File(theDestination+"/"+aSuffix+aLayerName+theNumberString+".jpg")),jpgopts,true);
+            
+        }//endfor
+    
+        theCopy.close(SaveOptions.DONOTSAVECHANGES);
+
+    }//endif
+
+} else  if( app.activeDocument ){
     alert ("The documnet must be saved before running this script.");
-    }
-////////////////////////////////////
-////// buffer number with zeros //////
+} else {
+    alert ("There is no document open.");
+}
+
+
+// buffer number with zeros 
 function bufferNumberWithZeros (number, places) {
-	var theNumberString = String(number);
-	for (var o = 0; o < (places - String(number).length); o++) {
-		theNumberString = String("0" + theNumberString)
-		};
-	return theNumberString
-	};
+    var theNumberString = String(number);
+    for (var o = 0; o < (places - String(number).length); o++) {
+        theNumberString = String("0" + theNumberString)
+    };
+
+    return theNumberString
+};
+
 ////// function collect all layersets //////
 function collectLayerSets (theParent) {
 	if (!allLayerSets) {
