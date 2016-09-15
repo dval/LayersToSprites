@@ -17,7 +17,7 @@ app.bringToFront();
 // debug level: 0-2 (0:disable, 1:break on error, 2:break at beginning)
  $.level = 1;
  //debugger; // launch debugger on next line
-
+var submitJob =false;
 //Only run if a file is open
 if ( app.documents.length > 0 && app.activeDocument.name.substr(0,8) != 'Untitled' ) {
     
@@ -75,33 +75,32 @@ if ( app.documents.length > 0 && app.activeDocument.name.substr(0,8) != 'Untitle
     };
 
     // ok- and cancel-buttons;
-    dlg.buildBtn = dlg.add('button', [220,460,410,475], "Export", {name:"xnlse"});
-    dlg.cancelBtn = dlg.add('button', [21,460,210,475], "Cancelsss", {name:"rescx"});
+    dlg.buildBtn = dlg.add('button', [220,460,410,475], "Export", {name:"oks"});
+    dlg.cancelBtn = dlg.add('button', [21,460,210,475], "Cancela", {name:"cancels"});
     dlg.warning = dlg.add('statictext', [21,490,410,530], "Warning: Existing files will be replaced without prompting!", {multiline: true});
 
     dlg.center();
 
-    //dlg.buildBtn.addEventListener('click ', function () { this.parent.close(2); });
-    dlg.buildBtn.onClick = function () { dlg.dClose(true); };
-    //dlg.buildBtn.OnClick = function () { this.parent.close(2); };
-    //dlg.cancelBtn.addEventListener('click ', function () { this.parent.close(1); });
-    dlg.cancelBtn.onClick = function () { this.parent.close(true); };
+    //dlg.buildBtn.onClick = function () { dlg.onBeforeClose(true); };
+    //dlg.cancelBtn.onClick = function () { this.parent.close(); };
 
-    //buildBtn.onClick = function(){
-    dlg.dClose = function(ivar){
+    //Button handler as final check
+    dlg.onBeforeClose = function(ivar){
         
-        $.writeln(dlg.layerRange.layersList.selection);
+        //make sure there are layers selected to export
         if( dlg.layerRange.layersList.selection == null ||  dlg.layerRange.layersList.selection.length <1 ){
-             
+             alert("You're doing it wrong.\n\nYou need to select at least 1 layer.","No");
             return false;
         }else{
-            dlg.close(true); 
+            ProcessExport ();
+            //dlg.close(true); 
         }
 
     }
 
     // final check before we run script
-    var submitJob = dlg.show ();
+    submitJob = dlg.show ();
+$.writeln(submitJob);
 
 } else  if( app.activeDocument ){
     alert ("The documnet must be saved before running this script.");
@@ -121,9 +120,9 @@ function bufferNumberWithZeros (number, places) {
 };
 
 function ProcessExport(){
-
+$.writeln(submitJob);
     // Handle any 'is OK to .show() dialog?' issues 
-    if (submitJob == true) {
+   // if (submitJob == true) {
 
          
     
@@ -190,7 +189,7 @@ function ProcessExport(){
         for (var m = theLayerSelection.length - 1; m >=0; m--) {
             
             //app.activeDocument = myDocument;
-            
+        
             var theLayer = theLayerSets[theLayerSelection[m]];
             //var aLayerName = "_" + theLayer.name.replace("/", "_");
             			
@@ -207,7 +206,7 @@ function ProcessExport(){
     
         //theCopy.close(SaveOptions.DONOTSAVECHANGES);
 
-    }//endif
+    //}//endif
 }
 
 // collect all layersets 
