@@ -1,0 +1,1 @@
+﻿// buffer number with zeros function BufferWithZero (number, places) {    var theNumberString = String(number);    for (var o = 0; o < (places - String(number).length); o++) {        theNumberString = String("0" + theNumberString)    };    return theNumberString};
