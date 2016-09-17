@@ -15,34 +15,28 @@
 app.bringToFront();
 
 // debug level: 0-2 (0:disable, 1:break on error, 2:break at beginning)
- $.level = 1;
- //debugger; // launch debugger on next line
-var submitJob =false;
+$.level = 1;
+//debugger; // launch debugger 
+
+// store window result
+var dlgResult = -1;
+
 //Only run if a file is open
 if ( app.documents.length > 0 && app.activeDocument.name.substr(0,8) != 'Untitled' ) {
+    
+    $.writeln("Reading documnet: " + app.activeDocument.name );
     
     // get active document
 	var currentDoc = {};
         currentDoc.ref = app.activeDocument;
         currentDoc.name = app.activeDocument.name.match(/(.*)\.[^\.]+$/)[1];
+        
         currentDoc.path = app.activeDocument.path;
         currentDoc.groups = collectLayerSets(app.activeDocument);
         
-    // filter for checking if entry is numeric, thanks to xbytor //
-	numberKeystrokeFilter = function() {
-        this.text = this.text.replace(",", "");
-        this.text = this.text.replace(".", "");
-        if (this.text.match(/[^\-\.\d]/)) {
-            this.text = this.text.replace(/[^\-\.\d]/g, "");
-        };
-        if (this.text == "") {
-            this.text = "0"
-        }
-	};
-
     // create  dialog;	
 	var dlg = new Window('dialog', "Export Sprites", [500,300,930,840],{resizeable: true});
-	
+	$.writeln("Building app window..." );
     // create list for layer-selection;
 	dlg.layerRange = dlg.add('panel', [21,20,179,375], "Select LayserSets to export:");
 	dlg.layerRange.layersList = dlg.layerRange.add('listbox', [11,20,160,305], '', {multiselect: true});
@@ -55,158 +49,182 @@ if ( app.documents.length > 0 && app.activeDocument.name.substr(0,8) != 'Untitle
     dlg.layerRange.showHidden = dlg.layerRange.add('checkbox', [11,315,160,335], "Show hidden layers ", { name: "chkShowHidden", value: true });
     dlg.layerRange.chkShowHidden.value = true;
 
-    // entry for prefix;
-    dlg.prefix = dlg.add('panel', [220,20,410,185], "Naming:");
-
+    // Options for file names
+    dlg.prefix = dlg.add('panel', [220,20,410,205], "Options:");
+    // prefix
     dlg.prefix.add('statictext', [11,20,46,40], "Prefix:", {multiline:false});
     dlg.prefix.prefixText = dlg.prefix.add('edittext', [54,20,145,40], "", {multiline:false});
-
+    // layer merging and folder creation
     dlg.prefix.topLevel = dlg.prefix.add('checkbox', [11,60,205,80], "Create only top level folders ", {name:"chkTopLevel"});
     dlg.prefix.bottomLevel = dlg.prefix.add('checkbox', [11,85,205,105], "Merge bottom level items ", {name:"chkBottomLevel"});
     dlg.prefix.addFilename = dlg.prefix.add('checkbox', [11,110,205,130], "Include filename in prefix ", {name:"chkFileName"});
+    dlg.prefix.addFilename = dlg.prefix.add('checkbox', [11,135,205,155], "Trim transparent pixels ", {name:"chkFileName"});
 
-    // field to select target-folder;
-    dlg.target = dlg.add('panel', [290,285,410,445], "Export to:");
+    // select target-folder;
+    dlg.target = dlg.add('panel', [220,215,410,445], "Export to:");
     dlg.target.targetSel = dlg.target.add('button', [11,20,100,40], "Select");
-    dlg.target.targetField = dlg.target.add('statictext', [11,50,100,155], String(currentDoc.path), {multiline:true});
+    dlg.target.targetField = dlg.target.add('edittext', [11,50,100,155], String(currentDoc.path), {multiline:true});
     dlg.target.targetSel.onClick = function () {
-    var target = Folder.selectDialog("Select folder to export to:");
+        var target = Folder.selectDialog("Select folder to export to:");
         dlg.target.targetField.text = target.fsName
     };
 
     // ok- and cancel-buttons;
-    dlg.buildBtn = dlg.add('button', [220,460,410,475], "Export", {name:"oks"});
-    dlg.cancelBtn = dlg.add('button', [21,460,210,475], "Cancela", {name:"cancels"});
+    // The docs state that buttons use the 'name' property as special identifiers of 'ok' or 'cancel'.
+    // Stating they will be treated as special dialog buttons 'Submit' and 'Cancel' respectively. 
+    // However, it's the 'text' property (button label) that is the special word. Changing the name
+    // property has no effect. Changing the label from 'Ok' to 'Export' is enough to remove
+    // the default click handler. 'Cancel' is then overriden by explicetly declaring an onClick handler.
+    dlg.buildBtn = dlg.add('button', [220,460,410,475], "Export", {name:"ok"});
+    dlg.cancelBtn = dlg.add('button', [21,460,210,475], "Cancel", {name:"cancel"});
     dlg.warning = dlg.add('statictext', [21,490,410,530], "Warning: Existing files will be replaced without prompting!", {multiline: true});
+    // add custom  button click handlers , overriding default 
+    dlg.buildBtn.onClick = function () { dlg.onBeforeClose(true); };
+    dlg.cancelBtn.onClick = function () { dlg.onBeforeClose(false); };
 
+    // center the dialog on the active screen
     dlg.center();
-
-    //dlg.buildBtn.onClick = function () { dlg.onBeforeClose(true); };
-    //dlg.cancelBtn.onClick = function () { this.parent.close(); };
-
-    //Button handler as final check
-    dlg.onBeforeClose = function(ivar){
+    $.writeln("Waiting for input... " );
+    
+    //Button handler catches click and does a pre-flight check
+    dlg.onBeforeClose = function(hasJob){
+        $.writeln("Job waiting: "+hasJob );
+        // if we hit the enter button...
+        if(hasJob){
+            //make sure there are layers selected to export
+            if( dlg.layerRange.layersList.selection == null ||  dlg.layerRange.layersList.selection.length <1 ){
+                 alert("You're doing it wrong.\n\nYou need to select at least 1 layer.","No");
+                 // returning false, cancels the export, but leaves the window open for layer selection.
+                return false;
+            }else{
+                $.writeln("Starting job... " );
+                ProcessExport ();
+            }//endif
+        } else { // else we hit the cancel button
+            dlg.close(2);
+        }//endif
         
-        //make sure there are layers selected to export
-        if( dlg.layerRange.layersList.selection == null ||  dlg.layerRange.layersList.selection.length <1 ){
-             alert("You're doing it wrong.\n\nYou need to select at least 1 layer.","No");
-            return false;
-        }else{
-            ProcessExport ();
-            //dlg.close(true); 
-        }
+        return true; //why not...
+    }//endfunction
 
+    // tidy up the closing
+    // contrary to the docs, onClose is not called before the window is closed. It is called
+    // after the window is closed. Returning 'false' from this callback does not prevent the 
+    // window closing as docs suggest. It may not need a return value at all.
+    dlg.onClose = function(){
+        $.writeln("Window closed." );
+        return dlgResult;
     }
 
-    // final check before we run script
-    submitJob = dlg.show ();
-$.writeln(submitJob);
+    // ?? not sure why we store this. dlgResult does not get set until close() is called.
+    // ie. it is the result of the 'completed' window life cycle. Only after the window is
+    // closed can we use dlgResult to check for the button that was pushed. That's it. 
+    // No window vars will  be available.
+    dlgResult = dlg.show ();
+    $.writeln("Job submit status: "+dlgResult );
 
 } else  if( app.activeDocument ){
+    // open doc, not saved yet.
     alert ("The documnet must be saved before running this script.");
 } else {
+    // no document is open
     alert ("There is no document open.");
 }
 
 
-// buffer number with zeros 
-function bufferNumberWithZeros (number, places) {
-    var theNumberString = String(number);
-    for (var o = 0; o < (places - String(number).length); o++) {
-        theNumberString = String("0" + theNumberString)
+function ProcessExport(){
+    
+    // get the number instead of the name;	
+    var theLayerSelection = new Array;
+    var theColl = dlg.layerRange.layersList.items;
+    for (var p = 0; p < dlg.layerRange.layersList.items.length; p++) {
+        if (dlg.layerRange.layersList.items[p].selected == true) {
+            theLayerSelection = theLayerSelection.concat(p);
+        }
     };
 
-    return theNumberString
-};
+    // collect the rest of the variables,
+    var thePrefix = dlg.prefix.prefixText.text;
+    //var theNumber = Number (dlg.number.startNumber.text) - 1;
+    //var theLayerNameAdd = dlg.layerName.doAddName.value;
+    var theDestination = dlg.target.targetField.text;
+    //var theNumbering = dlg.number.addNumber.value;
 
-function ProcessExport(){
-$.writeln(submitJob);
-    // Handle any 'is OK to .show() dialog?' issues 
-   // if (submitJob == true) {
+    // pdf options	
+    pdfOpts = new PDFSaveOptions() ;
+    pdfOpts.embedColorProfile = true;
+    pdfOpts.PDFCompatibility =  PDFCompatibility.PDF13;
+    pdfOpts.downSample =  PDFResample.NONE;
+    pdfOpts.vectorData = true;
+    pdfOpts.alphaChannels = false;
+    pdfOpts.byteOrder = ByteOrder.MACOS; 
+    pdfOpts.layers = false ;
+    pdfOpts.preserveEditing = false ;
+    pdfOpts.convertToEightBit = true;
+    pdfOpts.annotations = false;
+    pdfOpts.colorConversion = false;
+    pdfOpts.embedFonts = true;
+    pdfOpts.embedThumbnail = true;
+    pdfOpts.transparency = false;
+    pdfOpts.encoding = PDFEncoding.PDFZIP ;	
+    //var theVisibilities = new Array;
 
-         
+    // jpg options
+    var jpgopts = new JPEGSaveOptions();
+    jpgopts.byteOrder = ByteOrder.MACOS;
+    jpgopts.embedColorProfile = true;
+    jpgopts.formatOptions = FormatOptions.STANDARDBASELINE;
+    jpgopts.matte = MatteType.NONE;
+    jpgopts.quality = 10;
     
-        // get the number instead of the name;	
-        var theLayerSelection = new Array;
-        var theColl = dlg.layerRange.layersList.items;
-        for (var p = 0; p < dlg.layerRange.layersList.items.length; p++) {
-            if (dlg.layerRange.layersList.items[p].selected == true) {
-                theLayerSelection = theLayerSelection.concat(p);
-            }
-        };
-
-        // collect the rest of the variables,
-        var thePrefix = dlg.prefix.prefixText.text;
-        //var theNumber = Number (dlg.number.startNumber.text) - 1;
-        //var theLayerNameAdd = dlg.layerName.doAddName.value;
-        var theDestination = dlg.target.targetField.text;
-        //var theNumbering = dlg.number.addNumber.value;
-
-        // pdf options	
-        pdfOpts = new PDFSaveOptions() ;
-        pdfOpts.embedColorProfile = true;
-        pdfOpts.PDFCompatibility =  PDFCompatibility.PDF13;
-        pdfOpts.downSample =  PDFResample.NONE;
-        pdfOpts.vectorData = true;
-        pdfOpts.alphaChannels = false;
-        pdfOpts.byteOrder = ByteOrder.MACOS; 
-        pdfOpts.layers = false ;
-        pdfOpts.preserveEditing = false ;
-        pdfOpts.convertToEightBit = true;
-        pdfOpts.annotations = false;
-        pdfOpts.colorConversion = false;
-        pdfOpts.embedFonts = true;
-        pdfOpts.embedThumbnail = true;
-        pdfOpts.transparency = false;
-        pdfOpts.encoding = PDFEncoding.PDFZIP ;	
-        var theVisibilities = new Array;
-
-        // jpg options
-        var jpgopts = new JPEGSaveOptions();
-        jpgopts.byteOrder = ByteOrder.MACOS;
-        jpgopts.embedColorProfile = true;
-        jpgopts.formatOptions = FormatOptions.STANDARDBASELINE;
-        jpgopts.matte = MatteType.NONE;
-        jpgopts.quality = 10;
-        
-        var pngOpts = new ExportOptionsSaveForWeb; 
-        pngOpts.format = SaveDocumentType.PNG
-        pngOpts.PNG8 = false; 
-        pngOpts.transparency = true; 
-        pngOpts.interlaced = false; 
-        pngOpts.quality = 100;
-        
-        // create the file name;
-        var fileNamePrefix = "";
-        if (thePrefix.length > 0) {
-            fileNamePrefix = thePrefix+"_";
-        }
+    var pngOpts = new ExportOptionsSaveForWeb; 
+    pngOpts.format = SaveDocumentType.PNG
+    pngOpts.PNG8 = true; 
+    pngOpts.transparency = true; 
+    pngOpts.interlaced = false; 
+    pngOpts.quality = 100;
     
-        // create a flattened copy;
-        //var theCopy = myDocument.duplicate("thecopy", true);
-        
-        // do the operation;
-        for (var m = theLayerSelection.length - 1; m >=0; m--) {
-            
-            //app.activeDocument = myDocument;
-        
-            var theLayer = theLayerSets[theLayerSelection[m]];
-            //var aLayerName = "_" + theLayer.name.replace("/", "_");
-            			
-            // transfer layerset over to the copy;
-            theLayer.duplicate (theCopy, ElementPlacement.PLACEATBEGINNING);
-            //app.activeDocument = theCopy;
-            // hide the llast added layer;
-            //theCopy.layers[1].visible = false;
-            //theCopy.saveAs((new File(theDestination+"/"+myDocName+aSuffix+aLayerName+theNumberString+".pdf")),pdfOpts,true)
-           // theCopy.saveAs((new File(theDestination+"/"+aSuffix+aLayerName+theNumberString+".jpg")),jpgopts,true);
-           //activeDocument.exportDocument(new File(saveFile),ExportType.SAVEFORWEB,pngOpts); 
-            
-        }//endfor
-    
-        //theCopy.close(SaveOptions.DONOTSAVECHANGES);
+    // create the file name;
+    var fileNamePrefix = "";
+    if (thePrefix.length > 0) {
+        fileNamePrefix = thePrefix+"_";
+    }
 
-    //}//endif
+    // create a  copy;
+    //var theCopy = currentDoc.ref.duplicate( currentDoc.name + "_copy.psd" ,  false );
+    var theCopy = app.documents.add(currentDoc.ref.width,currentDoc.ref.height,currentDoc.ref.resolution,currentDoc.name + "_copy.psd", NewDocumentMode.RGB );
+    
+    // for each lay in array;
+    for (var m = theLayerSelection.length - 1; m >=0; m--) {
+        
+        // move to original document
+        app.activeDocument = currentDoc.ref;
+    
+        // reference the layer
+        var theLayer = currentDoc.groups[theLayerSelection[m]];
+        
+        // do some clean up
+        //var aLayerName = "_" + theLayer.name.replace("/", "_");
+                    
+        // transfer layerset over to the copy;
+        theLayer.duplicate (theCopy, ElementPlacement.PLACEATBEGINNING);
+        
+        //switch to new document
+        app.activeDocument = theCopy;
+        
+        // delete last added layer;
+        theCopy.layers[1].remove();
+        
+        // use web export options for .png files
+        activeDocument.exportDocument(File(dlg.target.targetField.text  + "/" + theLayer.name +'.png'),ExportType.SAVEFORWEB, pngOpts);
+
+        
+    }//endfor
+
+    theCopy.close(SaveOptions.DONOTSAVECHANGES);
+
+    $.writeln("Export complete. " );
+    dlg.close(1);
 }
 
 // collect all layersets 
@@ -229,3 +247,38 @@ function collectLayerSets (theParent) {
 
     return allLayerSets;
 }
+
+// buffer number with zeros 
+function bufferNumberWithZeros (number, places) {
+    var theNumberString = String(number);
+    for (var o = 0; o < (places - String(number).length); o++) {
+        theNumberString = String("0" + theNumberString)
+    };
+
+    return theNumberString
+};
+
+//return our result, (as a property...or an override...?) to ESTK ? or PS ? for ...logging?
+// The ESTK console window prints "Result: undefined" after the script completes. By including
+// this property as a function, I can hack in the actual result status of the script when it's done. So, 
+// instead we get something pretty like:  "Result: Export successful."  Ta-Da!  Although, I have 
+// no idea if PS ever sees this message.
+var Result = function(){
+    var resultMsg = "";
+    switch(dlgResult){
+        case  -1:
+            resultMsg = "Error. Status not set.";
+            break;
+        case  0:
+            resultMsg = "Error. Status unknown.";
+            break;
+        case 1:
+            resultMsg = "Export successful.";
+            break;
+        case 2:
+            resultMsg = "Canceled by user.";
+    }
+    return resultMsg;
+}
+
+Result();
