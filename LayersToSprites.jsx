@@ -1,4 +1,4 @@
-﻿/*
+﻿ /*
 * This script exports layers to images/sprites with a folder hierachy that matches the LayerSets in the document.
 * The primary goal is to create folders for each layer set and publish specified image type into created folders.
 * This was created to help with the  Photoshop >  SpriterPro > TexturePacker > Unity3D in 2D workflow.
@@ -16,7 +16,7 @@
 #include "L2SExportTypes.jsx"
 #include "Utils.jsx"
 
-// seemingly useless line, since we need to be in PS to run script...
+// focus on PS
 app.bringToFront();
 
 // debug level: 0-2 (0:disable, 1:break on error, 2:break at beginning)
@@ -31,170 +31,63 @@ var dlgResult = -1;
 // References are stored in lists to cut down on searching and itterative calls to the environment. Since
 // the lists are just collections of pointers, their size is relatively inconsiquential compared to the whole
 // application. 
-var IDAllLayers = new Array();
-var IDTopLayers = new Array();
-var IDArtLayers = new Array();
-var IDVisibleLayers = new Array();
-var IDVisibleTopLayers = new Array();
-var IDVisibleArtLayers = new Array();
+var IDXLayers = new Array();
+var IDXArtLayers = new Array();
+var IDXLayerSets = new Array();
+var IDXTopLayers = new Array();
 
-// our main export function
-function ProcessExport(){
-    
-    // get selected layers
-    var theLayerSelection = new Array();
-    
-    for (var p = 0; p < dlg.layerRange.layersList.items.length; p++) {
-        if (dlg.layerRange.layersList.items[p].selected == true) {
-            theLayerSelection = theLayerSelection.concat(p);
-        }
-    };
+// layers that were visible when the script was run.
+var IDXVLayers = new Array();
+var IDXVArtLayers = new Array();
+var IDXVLayerSets = new Array();
+var IDXVTopLayers = new Array();
 
-    // collect the variables,
-    var thePrefix = dlg.options.prefixText.text;
-    var theDestination = dlg.target.targetField.text;
+// the heirarchal paths for each layer
+var FolderPaths = new Array();
 
-    if(dlg.options.chkFileName.value){
-        thePrefix = currentDoc.name+thePrefix;
-    }
 
-    $.writeln(currentPath);
-
-    // create a new document with same properties as the first
-    var theCopy = app.documents.add( currentDoc.ref.width, currentDoc.ref.height, currentDoc.ref.resolution, currentDoc.name + "_copy.psd",  NewDocumentMode.RGB );
-    
-    // for each layer in array;
-    for (var m = theLayerSelection.length - 1; m >=0; m--) {
-        
-        $.writeln(currentPath);
-        // move to original document
-        app.activeDocument = currentDoc.ref;
-    
-        // reference the layer
-        var theLayer = currentDoc.groups[theLayerSelection[m]];
-        
-        // build filenames
-        var tmpName = thePrefix+theLayer.name.replace("/", "_");
-                    
-        // transfer layerset over to the copy;
-        theLayer.duplicate (theCopy, ElementPlacement.PLACEATBEGINNING);
-        
-        //switch to new document
-        app.activeDocument = theCopy;
-        
-        // delete last added layer;
-        //theCopy.layers[1].remove();
-        
-        // check for trim options
-        if(dlg.options.trimPixels.value){
-            app.activeDocument.trim();
-        }
-        
-        // use web export options for png files (pngOpts defined in external file.)
-        activeDocument.exportDocument(
-                File(dlg.target.targetField.text  + "/" + theLayer.name +'.png'), 
-                ExportType.SAVEFORWEB,
-                pngOpts
-        );
-        
-    }//endfor
-
-    theCopy.close(SaveOptions.DONOTSAVECHANGES);
-
-    $.writeln("Export complete. " );
-    dlg.close(1);
-    
-}
-
-// returns selected layers to export
-// this is the 'Flatten groups' option ....  
-// you need to build algorythm for not doing that, 
-// and another for only doing that to the top layer.
-
-// IDAllLayers, IDTopLayers, IDArtLayers, IDVisibleLayers, IDVisibleTopLayers, IDVisibleArtLayers;
-function CollectLayerSets (theParent) {
-
-    var allLayerSets = new Array();
-    
-    for (var m = theParent.layers.length - 1; m >= 0;m--) {
-        var theLayer = theParent.layers[m];
-        // apply the function to layersets;
-        if (theLayer.typename == "ArtLayer") {
-        // allLayerSets = allLayerSets.concat(theLayer);
-        } else {
-            // this line includes the layer groups;
-            allLayerSets = allLayerSets.concat(theLayer);
-            allLayerSets = allLayerSets.concat(CollectLayerSets(theLayer));
-        }
-    }
-
-    return allLayerSets;
-}
-
-// display layers to select for export
-function BuildLayerList(container){
-    currentPath = (currentPath == 'undefined')?"/":currentPath;
-    // store layer ID's for each set
-    for (var m = container.layers.length - 1; m >= 0;m--) {
-        var l = container.layers[m];
-        // build list of topLevel layers
-        if(l.parent == currentDoc.ref ){
-            currentPath = "/";
-            IDTopLayers = IDTopLayers.concat(m);
-            if(l.visible){
-                IDVisibleTopLayers = IDVisibleTopLayers.concat(m);
-            }
-        }
-        // build list of ArtLayers and update list of AllLayers
-        if (l.typename == "ArtLayer" || l.typename == "TextLayer") {
-            IDArtLayers = IDArtLayers.concat(m);
-            //IDAllLayers = IDAllLayers.concat(m);
-            if(l.visible){
-                IDVisibleArtLayers = IDVisibleArtLayers.concat(m);
-               // IDVisibleLayers = IDVisibleLayers.concat(m);
-            }
-        // build list of AllLayers
-        } 
-    
-        // this line includes the layer groups;
-        IDAllLayers = IDAllLayers.concat(m);
-        if(l.visible){
-            IDVisibleLayers = IDVisibleLayers.concat(m);
-        }
-        // this is a potent line, it calls an recursive loop which does a top-to-bottom depth first 
-        // search of all groups in the document. 
-        if(l.typename == "LayerSet" ){
-            currentPath = currentPath + String( l.name + "/");
-            IDAllLayers = IDAllLayers.concat(BuildLayerList(l));
-        }
-        
-    }
-        $.writeln("layer list built for: " + currentPath);
-}
+// the ** main body of the application. **
+// it parses the DOM to find, sort, and store the document Layers. Then once the the data is usable, it
+// builds a dialog box, and creates a selection list based on  the sorted lists, instead of the raw DOM,
 
 //Only run if a file is open
 if ( app.documents.length > 0 && app.activeDocument.name.substr(0,8) != 'Untitled' ) {
     
     $.writeln("Reading documnet: " + app.activeDocument.name );
-
     currentPath = "/";   
 
-
-    
-    // get active document
+    // get our working document, we hold a reference to it, so we can switch back
+    // from the document_copy. This way, if the user has multiple docs open, we 
+    // return to the same doc we started in.
 	var currentDoc = {};
         currentDoc.ref = app.activeDocument;
         currentDoc.name = app.activeDocument.name.match(/(.*)\.[^\.]+$/)[1];
         currentDoc.path = app.activeDocument.path;
-        //currentDoc.groups = CollectLayerSets(app.activeDocument);
         
     // collect layer data for document
     BuildLayerList(currentDoc.ref);
-        currentDoc.groups = IDAllLayers;
+    // set our default display group
+    currentDoc.groups = IDXLayers;
         
-    $.writeln(currentPath);
+    // create  dialog;
+    var dlg = BuildDialogBox();
     
-    // create  dialog;	
+} else  if( app.activeDocument ){
+    // open doc, not saved yet.
+    alert ("The documnet must be saved before running this script.");
+} else {
+    // no document is open
+    alert ("There is no document open.");
+}
+
+
+
+// ** Support functions and logic **
+
+// create all the necessary elements for displaying and selecting layers and export options.
+// basically the entire UI for the app
+function BuildDialogBox(){
+    
 	var dlg = new Window('dialog', "Export Sprites", [500,300,930,840],{resizeable: true});
 	$.writeln("Building app window..." );
     
@@ -204,18 +97,20 @@ if ( app.documents.length > 0 && app.activeDocument.name.substr(0,8) != 'Untitle
     dlg.layerRange.showHidden = dlg.layerRange.add('checkbox', [10,225,160,245], "Show hidden layers ", { name: "chkShowHidden", value: true });
     dlg.layerRange.chkShowHidden.value = true;
     
-    // add all layers selected by default
+    // add all layers, layersets selected by default
     dlg.layerManager = function(){
         dlg.layerRange.layersList.removeAll();
         for (var q = 0; q < currentDoc.groups.length; q++) {
-            if(parseInt(currentDoc.groups[q]) > -1 ){
-            if( app.activeDocument.layers[currentDoc.groups[q]].visible || dlg.layerRange.chkShowHidden.value ){
-                dlg.layerRange.layersList.add ("item",  app.activeDocument.layers[currentDoc.groups[q]].name );
-                dlg.layerRange.layersList.items[dlg.layerRange.layersList.items.length-1].selected = true;
-            }
-            }
-        }
-    }
+            var lid = GetLayerByID(currentDoc.groups[q]) ;
+            if( lid.visible || dlg.layerRange.chkShowHidden.value ){
+                dlg.layerRange.layersList.add ("item",  lid.name);
+                // select all LayerSets by default
+                if(lid.typename == "LayerSet"){
+                    dlg.layerRange.layersList.items[dlg.layerRange.layersList.items.length-1].selected = true;
+                }//endif typename
+            }//endif visible
+        }//endfor
+    }//end function
     dlg.layerManager ();
     
     // update list when option is set
@@ -277,7 +172,10 @@ if ( app.documents.length > 0 && app.activeDocument.name.substr(0,8) != 'Untitle
                 return false;
             }else{
                 $.writeln("Starting job... " );
-                ProcessExport ();
+                // we need to pass the window reference to our export function explicetly.
+                // because we reference ProcessExport() before we're done writing the window. 
+                // or something like that.... it's the only spaghetti in the code.
+                ProcessExport (dlg);
             }//endif
         } else { // else we hit the cancel button
             dlg.close(2);
@@ -302,18 +200,142 @@ if ( app.documents.length > 0 && app.activeDocument.name.substr(0,8) != 'Untitle
     dlgResult = dlg.show ();
     $.writeln("Job submit status: "+dlgResult );
 
-} else  if( app.activeDocument ){
-    // open doc, not saved yet.
-    alert ("The documnet must be saved before running this script.");
-} else {
-    // no document is open
-    alert ("There is no document open.");
-}
+    // return a reference, so we can still use dialog options outside of dialog box
+    return dlg;
+    
+}//endfunc
+
+
+// our main export function
+// this process the options in the dialog, creates necessary folder structure based on document hierarchy,
+// then exports files for each artlayer into newly created folder structure.
+function ProcessExport(dlg){
+    
+    // get selected layers
+    var theLayerSelection = new Array();
+    // store  layer references of selected layers
+    
+    for (var p = 0; p < dlg.layerRange.layersList.items.length; p++) {
+        if (dlg.layerRange.layersList.items[p].selected == true) {
+            theLayerSelection = theLayerSelection.concat(dlg.layerRange.layersList.items[p]);
+        }
+    };
+
+    // collect dialog box options,
+    var thePrefix = dlg.options.prefixText.text;
+    var theDestination = dlg.target.targetField.text;
+
+    // update the prefix if we have one
+    if(dlg.options.chkFileName.value){
+        thePrefix = currentDoc.name+thePrefix;
+    }
+    
+    // create a new document with same properties as the first
+    var theCopy = app.documents.add( currentDoc.ref.width, currentDoc.ref.height, currentDoc.ref.resolution, currentDoc.name + "_copy.psd",  NewDocumentMode.RGB );
+
+    // for each layer in array;
+    for (var m = theLayerSelection.length - 1; m >=0; m--) {
+       
+       // move to original document
+        app.activeDocument = currentDoc.ref;
+        
+        // reference the layer
+        var theLayer = GetLayerByName(theLayerSelection[m].text);
+        
+        // build filenames
+        var tmpName = thePrefix+theLayer.name;
+                    
+        // transfer layerset over to the copy;
+        theLayer.duplicate (theCopy, ElementPlacement.PLACEATBEGINNING);
+        
+        //switch back to  document_copy
+        app.activeDocument = theCopy;
+        
+        // delete previously added layer;
+        theCopy.layers[1].remove();
+        
+        // check for trim options
+        if(dlg.options.trimPixels.value){
+            app.activeDocument.trim();
+        }
+         
+       // build folder path from layer structure
+       var myp = new Folder(dlg.target.targetField.text  + "/" + FolderPaths[theLayer.id] );
+       myp.create();
+       
+        // use web export options for png files (pngOpts defined in external file.)
+        activeDocument.exportDocument(
+                File(dlg.target.targetField.text  + "/" + FolderPaths[theLayer.id] + "/" + theLayer.name +'.png'), 
+                ExportType.SAVEFORWEB,
+                pngOpts
+        );
+             
+    }//endfor
+
+    // close the extranious document
+    theCopy.close(SaveOptions.DONOTSAVECHANGES);   
+    
+    // happy ending
+    $.writeln("Export complete. " );
+    dlg.close(1);
+    
+}//endfunc
+
+// display layers to select for export
+function BuildLayerList(container){
+    
+    // IDAllLayers, IDTopLayers, IDArtLayers, IDVisibleLayers, IDVisibleTopLayers, IDVisibleArtLayers;
+    currentPath = (currentPath == 'undefined')?"/":currentPath;
+    
+    // store layer ID's for each set
+    for (var m = container.layers.length - 1; m >= 0;m--) {
+        
+        var l = container.layers[m];
+
+        // this line includes the layer groups;
+        if(l.typename == "LayerSet" || l.typename == "ArtLayer" || l.typename == "TextLayer" ){
+            IDXLayers = IDXLayers.concat(l.id);
+            if(l.visible){
+                IDXVLayers = IDXVLayers.concat(l.id);
+            } //endif   
+        }//endif
+    
+        // build list of topLevel layers
+        if(l.parent == currentDoc.ref ){
+            currentPath = "/";
+            IDXTopLayers = IDXTopLayers.concat(l.id);
+            if(l.visible){
+                IDXVTopLayers = IDXVTopLayers.concat(l.id);
+            }
+        }
+    
+        // build list of ArtLayers and update list of AllLayers
+        if (l.typename == "ArtLayer" || l.typename == "TextLayer") {
+            IDXArtLayers = IDXArtLayers.concat(l.id);
+            //currentPath  = "";
+            if(l.visible){
+                IDXVArtLayers = IDXVArtLayers.concat(l.id);
+            }
+        } 
+    
+        // this  calls an recursive loop which does a top-to-bottom depth first 
+        // search of all groups in the document. 
+        if(l.typename == "LayerSet" ){
+            currentPath = currentPath + String( l.name + "/");
+            BuildLayerList(l);
+        }
+        
+        // store path for each layer
+        $.writeln(l.id + ": " + currentPath);
+        FolderPaths[l.id] = currentPath;
+    
+    }//endfor
+}//endfunc
 
 // return our result, (as a property...or an override...?) to ESTK ? or PS ? for ...logging?
 // The ESTK console window prints "Result: undefined" after the script completes. By including
 // this property as a function, I can hack in the actual result status of the script when it's done. So, 
-// instead we get something pretty like:  "Result: Export successful."  Ta-Da!  Although, I have 
+// now  we get something pretty like:  "Result: Export successful."  Ta-Da!  Although, I have 
 // no idea if PS ever sees this message.
 var Result = function(){
     var resultMsg = "";
@@ -332,6 +354,10 @@ var Result = function(){
     }
     return resultMsg;
 }
-// now... it prints "Result: Result()"  
 // so, we need to explicitly call the function to override the property?? what...
+
+// feedback for user
+alert(Result());
+
+// feedback for debugger / machine
 Result();
