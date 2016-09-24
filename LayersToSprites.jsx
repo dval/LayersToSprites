@@ -137,7 +137,7 @@ function BuildDialogBox(){
     
     dlg.options.add('statictext', [11,180,165,200], "Layer Assembly: ", {multiline:false});
     dlg.options.bottomLevel = dlg.options.add('checkbox', [11,205,205,225], "Merge ArtLayers in each LayerSet. ", {name:"chkBottomLevel"});
-    dlg.options.trimPixels = dlg.options.add('checkbox', [11,230,205,250], "Trim transparent pixels. ", {name:"chkFileName"});
+    dlg.options.trimPixels = dlg.options.add('checkbox', [11,230,205,250], "Trim transparent pixels. ", {name:"chkTrimPix"});
 
     // select target-folder;
     dlg.target = dlg.add('panel', [10,305,420,425], "Export to:");
@@ -259,7 +259,7 @@ function ProcessExport(dlg){
         app.activeDocument = theCopy;
         
         // check for trim options
-        if(dlg.options.trimPixels.value){
+        if(dlg.options.chkTrimPix.value){
             app.activeDocument.trim();
         }
          
