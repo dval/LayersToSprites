@@ -20,7 +20,7 @@
 app.bringToFront();
 
 // debug level: 0-2 (0:disable, 1:break on error, 2:break at beginning)
-$.level = 1;
+$.level = 0;
 //debugger; // launch debugger 
 
 // store window result for feedback after window closes
@@ -103,10 +103,15 @@ function BuildDialogBox(){
         for (var q = 0; q < currentDoc.groups.length; q++) {
             var lid = GetLayerByID(currentDoc.groups[q]) ;
             if( lid.visible || dlg.layerRange.chkShowHidden.value ){
-                dlg.layerRange.layersList.add ("item",  lid.name);
+                // have to store reference here, so we can set selected items at instantiation.
+               var mitem = dlg.layerRange.layersList.add ("item",  lid.name);
                 // select all LayerSets by default
                 if(lid.typename == "LayerSet"){
-                    dlg.layerRange.layersList.items[dlg.layerRange.layersList.items.length-1].selected = true;
+                    // without the reference, the item is highlited, but the discrete listener is never invoked
+                    // so, the item isn't really selected, and is treated as unselected during the export phase
+                    mitem.selected = true;
+                    // this doesn't work, ie. setting 'selected' without a ref
+                    // dlg.layerRange.layersList.items[dlg.layerRange.layersList.items.length-1].selected = true;
                 }//endif typename
             }//endif visible
         }//endfor
@@ -230,16 +235,18 @@ function ProcessExport(dlg){
         thePrefix = currentDoc.name+thePrefix;
     }
     
-    // create a new document with same properties as the first
-    var theCopy = app.documents.add( currentDoc.ref.width, currentDoc.ref.height, currentDoc.ref.resolution, currentDoc.name + "_copy.psd",  NewDocumentMode.RGB );
 
     // for each layer in array;
     for (var m = theLayerSelection.length - 1; m >=0; m--) {
        
+        // create a new document with same properties as the first
+        var theCopy = app.documents.add( currentDoc.ref.width, currentDoc.ref.height, currentDoc.ref.resolution, currentDoc.name + "_copy.psd",  NewDocumentMode.RGB );
+        
        // move to original document
         app.activeDocument = currentDoc.ref;
         
         // reference the layer
+            $.writeln("Getting: " + theLayerSelection[m].text);
         var theLayer = GetLayerByName(theLayerSelection[m].text);
         
         // build filenames
@@ -252,7 +259,7 @@ function ProcessExport(dlg){
         app.activeDocument = theCopy;
         
         // delete previously added layer;
-        theCopy.layers[1].remove();
+       // theCopy.layers[1].remove();
         
         // check for trim options
         if(dlg.options.trimPixels.value){
@@ -270,10 +277,11 @@ function ProcessExport(dlg){
                 pngOpts
         );
              
+        // close the extranious document
+        theCopy.close(SaveOptions.DONOTSAVECHANGES);   
+    
     }//endfor
 
-    // close the extranious document
-    theCopy.close(SaveOptions.DONOTSAVECHANGES);   
     
     // happy ending
     $.writeln("Export complete. " );
