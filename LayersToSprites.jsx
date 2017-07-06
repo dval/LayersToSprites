@@ -27,10 +27,8 @@ $.level = 0;
 var dlgResult = -1;
 
 // Layer lists
-// basically copying this archeture from the way Unity3D handles efficient object access.
 // References are stored in lists to cut down on searching and itterative calls to the environment. Since
-// the lists are just collections of pointers, their size is relatively inconsiquential compared to the whole
-// application. 
+// the lists are just collections of pointers, their size is relatively inconsiquential compared to the application. 
 var IDXLayers = new Array();
 var IDXArtLayers = new Array();
 var IDXLayerSets = new Array();
@@ -44,7 +42,9 @@ var IDXVTopLayers = new Array();
 
 // the heirarchal paths for each layer
 var FolderPaths = new Array();
-
+// object for storing our meta document, this is  what the export function
+// uses to parse the active document, visible layers, groups, etc.
+var workingDoc = {};
 
 // the ** main body of the application. **
 // it parses the DOM to find, sort, and store the document Layers. Then once the the data is usable, it
@@ -56,18 +56,18 @@ if ( app.documents.length > 0 && app.activeDocument.name.substr(0,8) != 'Untitle
     $.writeln("Reading documnet: " + app.activeDocument.name );
     currentPath = "/";   
 
-    // get our working document, we hold a reference to it, so we can switch back
-    // from the document_copy. This way, if the user has multiple docs open, we 
-    // return to the same doc we started in.
-	var currentDoc = {};
-        currentDoc.ref = app.activeDocument;
-        currentDoc.name = app.activeDocument.name.match(/(.*)\.[^\.]+$/)[1];
-        currentDoc.path = app.activeDocument.path;
+    // build our working document, hold a reference to active document, so we can switch back.
+    // This way, if the user has multiple docs open, we return to the same doc we started in.
+    workingDoc.ref = app.activeDocument;
+    workingDoc.name = app.activeDocument.name.match(/(.*)\.[^\.]+$/)[1];
+    workingDoc.path = app.activeDocument.path;
         
     // collect layer data for document
-    BuildLayerList(currentDoc.ref);
+    BuildLayerList(workingDoc.ref);
+    
     // set our default display group
-    currentDoc.groups = IDXLayers;
+    //workingDoc.groups = IDXLayers;
+    SetBaseDOM(IDXLayers);
         
     // create  dialog;
     var dlg = BuildDialogBox();
@@ -80,7 +80,10 @@ if ( app.documents.length > 0 && app.activeDocument.name.substr(0,8) != 'Untitle
     alert ("There is no document open.");
 }
 
-
+ // set display group to pre-selected filter
+function SetBaseDOM( domlist ){
+    workingDoc.groups = domlist;
+}
 
 // ** Support functions and logic **
 
@@ -94,28 +97,31 @@ function BuildDialogBox(){
     // create list for layer-selection;
 	dlg.layerRange = dlg.add('panel', [10,20,185,290], "Select LayerSets");
 	dlg.layerRange.layersList = dlg.layerRange.add('listbox', [0,20,175,220], '', {multiselect: true});
-    dlg.layerRange.showHidden = dlg.layerRange.add('checkbox', [10,225,160,245], "Show hidden layers ", { name: "chkShowHidden", value: true });
-    dlg.layerRange.chkShowHidden.value = true;
+    dlg.layerRange.showHidden = dlg.layerRange.add('checkbox', [10,225,160,245], "Show hidden layers ", { name: "chkShowHidden", value: false });
+    dlg.layerRange.chkShowHidden.value = false;
     
-    // add all layers, layersets selected by default
+    // add all layers, art layers selected by default
     dlg.layerManager = function(){
         dlg.layerRange.layersList.removeAll();
-        for (var q = 0; q < currentDoc.groups.length; q++) {
-            var lid = GetLayerByID(currentDoc.groups[q]) ;
+        //use the list stored in workingDoc.groups, this allows a top-down trim before user selection
+        for (var q = 0; q < workingDoc.groups.length; q++) {
+            var lid = GetLayerByID(workingDoc.groups[q]) ;
             if( lid.visible || dlg.layerRange.chkShowHidden.value ){
-                // have to store reference here, so we can set selected items at instantiation.
+                // have to store reference here, so we can set selected layers at instantiation.
+                // without the reference, the item is highlited, but the discrete listener is only attached to last layer in list
+                // so, although the dialog shows selected, the DOM item isn't  selected and gets ignored during export.
                 var mitem = dlg.layerRange.layersList.add ("item",  lid.name);
                 // select all LayerSets by default
-                if(lid.typename == "LayerSet"){
-                    // without the reference, the item is highlited, but the discrete listener is never invoked
-                    // so, the item isn't really selected, and is treated as unselected during the export phase
+                // probably could be a "check groups by default" checkbox in a non-existant settings file
+                if(lid.typename != "LayerSet"){
                     mitem.selected = true;
-                    // this doesn't work, ie. setting 'selected' without a ref
+                    // the following doesn't work, ie. setting 'selected' without a ref
                     // dlg.layerRange.layersList.items[dlg.layerRange.layersList.items.length-1].selected = true;
                 }//endif typename
             }//endif visible
         }//endfor
     }//end function
+
     dlg.layerManager ();
     
     // update list when option is set
@@ -131,9 +137,12 @@ function BuildDialogBox(){
     // layer merging and folder creation
     dlg.options.add('statictext', [11,75,165,95], "Folder Management: ", {multiline:false});
     dlg.options.allFolders = dlg.options.add('radiobutton', [11,100,205,120], "Folder for each LayerSet. ", {name:"rdoAllFolders"});
-    dlg.options.noFolders = dlg.options.add('radiobutton', [11,125,205,145], "Don't create any folders. ", {name:"rdoNoFolders"});
-    dlg.options.topLevel = dlg.options.add('radiobutton', [11,150,205,170], "Create only top level folders. ", {name:"rdoTopLevel"});
+    dlg.options.topLevel = dlg.options.add('radiobutton', [11,125,205,145], "Create only top level folders. ", {name:"rdoTopLevel"});
+    dlg.options.noFolders = dlg.options.add('radiobutton', [11,150,205,170], "Don't create any folders. ", {name:"rdoNoFolders"});
     dlg.options.allFolders.value=true;
+    dlg.options.allFolders.onClick = function () { SetBaseDOM(IDXLayers); dlg.layerManager(); };
+    dlg.options.topLevel.onClick = function () { SetBaseDOM(IDXTopLayers); dlg.layerManager(); };
+    dlg.options.noFolders.onClick = function () { SetBaseDOM(IDXArtLayers); dlg.layerManager(); };
     
     dlg.options.add('statictext', [11,180,165,200], "Layer Assembly: ", {multiline:false});
     dlg.options.bottomLevel = dlg.options.add('checkbox', [11,205,205,225], "Merge ArtLayers in each LayerSet. ", {name:"chkBottomLevel"});
@@ -142,10 +151,12 @@ function BuildDialogBox(){
     // select target-folder;
     dlg.target = dlg.add('panel', [10,305,420,425], "Export to:");
     dlg.target.targetSel = dlg.target.add('button', [18,20,100,40], "Select");
-    dlg.target.targetField = dlg.target.add('edittext', [20,50,400,90], String(currentDoc.path), {multiline:true});
+    dlg.target.targetField = dlg.target.add('edittext', [20,50,400,90], String(workingDoc.path), {multiline:true});
     dlg.target.targetSel.onClick = function () {
-        var targetFolder = Folder.selectDialog("Select folder to export to:");
-        dlg.target.targetField.text = targetFolder.fsName;
+        var targetFolder =new Folder(workingDoc.path);
+        var savePath = targetFolder.selectDlg("Select folder to export to:");
+        targetFolder.path = savePath.fsName;
+        dlg.target.targetField.text = savePath.fsName;
     };
 
     // ok- and cancel-buttons;
@@ -232,7 +243,7 @@ function ProcessExport(dlg){
 
     // update the prefix if we have one
     if(dlg.options.chkFileName.value){
-        thePrefix = currentDoc.name+thePrefix;
+        thePrefix = workingDoc.name+thePrefix;
     }
     
 
@@ -240,10 +251,17 @@ function ProcessExport(dlg){
     for (var m = theLayerSelection.length - 1; m >=0; m--) {
        
         // create a new document with same properties as the first
-        var theCopy = app.documents.add( currentDoc.ref.width, currentDoc.ref.height, currentDoc.ref.resolution, currentDoc.name + "_copy.psd",  NewDocumentMode.RGB, DocumentFill.TRANSPARENT );
+        var theCopy = app.documents.add ( 
+                                workingDoc.ref.width, 
+                                workingDoc.ref.height, 
+                                workingDoc.ref.resolution, 
+                                workingDoc.name + "_copy.psd",  
+                                NewDocumentMode.RGB, 
+                                DocumentFill.TRANSPARENT 
+                                );
         
        // move to original document
-        app.activeDocument = currentDoc.ref;
+        app.activeDocument = workingDoc.ref;
         
         // reference the layer
         $.writeln("Getting: " + theLayerSelection[m].text);
@@ -293,7 +311,7 @@ function BuildLayerList(container){
     currentPath = (currentPath == 'undefined')?"/":currentPath;
     
     // store layer ID's for each set
-    for (var m = container.layers.length - 1; m >= 0;m--) {
+    for (var m = 0; container.layers.length  < m ; m++) {
         
         var l = container.layers[m];
 
@@ -306,7 +324,7 @@ function BuildLayerList(container){
         }//endif
     
         // build list of topLevel layers
-        if(l.parent == currentDoc.ref ){
+        if(l.parent == workingDoc.ref ){
             currentPath = "/";
             IDXTopLayers = IDXTopLayers.concat(l.id);
             if(l.visible){
@@ -326,12 +344,22 @@ function BuildLayerList(container){
         // this  calls an recursive loop which does a top-to-bottom depth first 
         // search of all groups in the document. 
         if(l.typename == "LayerSet" ){
-            currentPath = currentPath + String( l.name + "/");
+
+            //check if  we need to be added to path
+            if(m == 0){
+                // build a dirty path 
+                currentPath = currentPath + String( l.name + "/");
+            }
+        
+            // get the last folder in the path
+            //var parentFromPath = currentPath.substr(-(l.parent.name.length-1),l.parent.name.length);
+            //var selfFromPath = currentPath.substr(-(l.name.length-1),l.name.length); 
+            
             BuildLayerList(l);
         }
         
         // store path for each layer
-        $.writeln(l.id + ": " + currentPath);
+        $.writeln(l.parent.name + ": " + currentPath);
         FolderPaths[l.id] = currentPath;
     
     }//endfor
